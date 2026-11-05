@@ -24,6 +24,7 @@ import (
 	v11_2_0 "github.com/solva-solutions/neutron/v11/app/upgrades/v11.2.0"
 	v11_3_0 "github.com/solva-solutions/neutron/v11/app/upgrades/v11.3.0"
 	v11_4_0 "github.com/solva-solutions/neutron/v11/app/upgrades/v11.4.0"
+	v11_5_0 "github.com/solva-solutions/neutron/v11/app/upgrades/v11.5.0"
 	v700 "github.com/solva-solutions/neutron/v11/app/upgrades/v7.0.0"
 	v800 "github.com/solva-solutions/neutron/v11/app/upgrades/v8.0.0"
 	v800_rc0 "github.com/solva-solutions/neutron/v11/app/upgrades/v8.0.0-rc0"
@@ -48,6 +49,10 @@ import (
 
 	"github.com/solva-solutions/neutron/v11/x/dynamicfees"
 	ibcratelimit "github.com/solva-solutions/neutron/v11/x/ibc-rate-limit"
+
+	"github.com/disperze/usdc-migration/v10/x/usdcmigration"
+	usdcmigrationkeeper "github.com/disperze/usdc-migration/v10/x/usdcmigration/keeper"
+	usdcmigrationtypes "github.com/disperze/usdc-migration/v10/x/usdcmigration/types"
 
 	"cosmossdk.io/client/v2/autocli"
 	"cosmossdk.io/core/appmodule"
@@ -256,6 +261,7 @@ var (
 		v11_2_0.Upgrade,
 		v11_3_0.Upgrade,
 		v11_4_0.Upgrade,
+		v11_5_0.Upgrade,
 	}
 
 	// DefaultNodeHome default home directories for the application daemon
@@ -302,6 +308,7 @@ var (
 		marketmap.AppModuleBasic{},
 		dynamicfees.AppModuleBasic{},
 		consensus.AppModuleBasic{},
+		usdcmigration.AppModule{},
 	)
 
 	// module account permissions
@@ -395,7 +402,11 @@ type App struct {
 
 	PFMModule packetforward.AppModule
 
-	TransferStack           *ibchooks.IBCMiddleware
+	// TransferStack is the full ICS20 stack routed for the transfer port, with
+	// the usdcmigration middleware outermost. HooksTransferStack is the
+	// ibc-hooks middleware it wraps, kept typed so tests can swap its hooks.
+	TransferStack           ibcporttypes.IBCModule
+	HooksTransferStack      *ibchooks.IBCMiddleware
 	Ics20WasmHooks          *ibchooks.WasmHooks
 	RateLimitingICS4Wrapper *ibcratelimit.ICS4Wrapper
 	HooksICS4Wrapper        ibchooks.ICS4Middleware
@@ -405,6 +416,8 @@ type App struct {
 	ContractManagerKeeper   contractmanagermodulekeeper.Keeper
 
 	StateVerifierKeeper *svkeeper.Keeper
+
+	UsdcMigrationKeeper *usdcmigrationkeeper.Keeper
 
 	ConsensusParamsKeeper consensusparamkeeper.Keeper
 
@@ -493,6 +506,7 @@ func New(
 		oracletypes.StoreKey, marketmaptypes.StoreKey, feemarkettypes.StoreKey, dynamicfeestypes.StoreKey, globalfeetypes.StoreKey, stakingtypes.StoreKey,
 		ibcratelimittypes.ModuleName, stateverifiertypes.StoreKey,
 		govtypes.StoreKey, minttypes.StoreKey, distributiontypes.StoreKey,
+		usdcmigrationtypes.StoreKey,
 	)
 	tkeys := storetypes.NewTransientStoreKeys(paramstypes.TStoreKey, dextypes.TStoreKey)
 	memKeys := storetypes.NewMemoryStoreKeys(feetypes.MemStoreKey)
@@ -915,6 +929,7 @@ func New(
 		tendermint.NewAppModule(tmLightClientModule),
 		stateverifier.NewAppModule(appCodec, app.StateVerifierKeeper),
 		feerefunder.NewAppModule(appCodec, *app.FeeKeeper, app.AccountKeeper, app.BankKeeper),
+		usdcmigration.NewAppModule(app.UsdcMigrationKeeper),
 		// always be last to make sure that it checks for all invariants and not only part of them
 		crisis.NewAppModule(&app.CrisisKeeper, skipGenesisInvariants, app.GetSubspace(crisistypes.ModuleName)), //nolint:staticcheck
 	)
@@ -1043,6 +1058,7 @@ func New(
 		crisistypes.ModuleName,
 		consensusparamtypes.ModuleName,
 		stateverifiertypes.ModuleName,
+		usdcmigrationtypes.ModuleName, // after transfer
 	)
 
 	app.mm.RegisterInvariants(&app.CrisisKeeper) //nolint:staticcheck
@@ -1333,29 +1349,30 @@ func (app *App) setupUpgradeHandlers() {
 				app.mm,
 				app.configurator,
 				&upgrades.UpgradeKeepers{
-					BankKeeper:         app.BankKeeper,
-					AccountKeeper:      app.AccountKeeper,
-					CronKeeper:         app.CronKeeper,
-					IcqKeeper:          app.InterchainQueriesKeeper,
-					TokenFactoryKeeper: app.TokenFactoryKeeper,
-					SlashingKeeper:     app.SlashingKeeper,
-					ParamsKeeper:       app.ParamsKeeper,
-					ContractManager:    app.ContractManagerKeeper,
-					GovKeeper:          *app.GovKeeper,
-					MintKeeper:         app.MintKeeper,
-					DistributionKeeper: app.DistributionKeeper,
-					ConsensusKeeper:    &app.ConsensusParamsKeeper,
-					MarketmapKeeper:    app.MarketMapKeeper,
-					FeeMarketKeeper:    app.FeeMarkerKeeper,
-					DynamicfeesKeeper:  app.DynamicFeesKeeper,
-					StakingKeeper:      app.StakingKeeper,
-					DexKeeper:          &app.DexKeeper,
-					IbcRateLimitKeeper: app.RateLimitingICS4Wrapper.IbcratelimitKeeper,
-					ChannelKeeper:      app.IBCKeeper.ChannelKeeper,
-					TransferKeeper:     app.TransferKeeper.Keeper,
-					WasmKeeper:         &app.WasmKeeper,
-					FeerefunderKeeper:  app.FeeKeeper,
-					GlobalFeeSubspace:  app.GetSubspace(globalfee.ModuleName),
+					BankKeeper:          app.BankKeeper,
+					AccountKeeper:       app.AccountKeeper,
+					CronKeeper:          app.CronKeeper,
+					IcqKeeper:           app.InterchainQueriesKeeper,
+					TokenFactoryKeeper:  app.TokenFactoryKeeper,
+					SlashingKeeper:      app.SlashingKeeper,
+					ParamsKeeper:        app.ParamsKeeper,
+					ContractManager:     app.ContractManagerKeeper,
+					GovKeeper:           *app.GovKeeper,
+					MintKeeper:          app.MintKeeper,
+					DistributionKeeper:  app.DistributionKeeper,
+					ConsensusKeeper:     &app.ConsensusParamsKeeper,
+					MarketmapKeeper:     app.MarketMapKeeper,
+					FeeMarketKeeper:     app.FeeMarkerKeeper,
+					DynamicfeesKeeper:   app.DynamicFeesKeeper,
+					StakingKeeper:       app.StakingKeeper,
+					DexKeeper:           &app.DexKeeper,
+					IbcRateLimitKeeper:  app.RateLimitingICS4Wrapper.IbcratelimitKeeper,
+					ChannelKeeper:       app.IBCKeeper.ChannelKeeper,
+					TransferKeeper:      app.TransferKeeper.Keeper,
+					WasmKeeper:          &app.WasmKeeper,
+					FeerefunderKeeper:   app.FeeKeeper,
+					UsdcMigrationKeeper: app.UsdcMigrationKeeper,
+					GlobalFeeSubspace:   app.GetSubspace(globalfee.ModuleName),
 				},
 				app,
 				app.AppCodec(),
@@ -1621,9 +1638,9 @@ func overrideWasmVariables() {
 
 // WireICS20PreWasmKeeper Create the IBC Transfer Stack from bottom to top:
 // * SendPacket. Originates from the transferKeeper and goes up the stack:
-// transferKeeper.SendPacket -> ibc_rate_limit.SendPacket -> ibc_hooks.SendPacket -> channel.SendPacket
+// transferKeeper.SendPacket -> usdcmigration.SendPacket -> ibc_rate_limit.SendPacket -> ibc_hooks.SendPacket -> channel.SendPacket
 // * RecvPacket, message that originates from core IBC and goes down to app, the flow is the other way
-// channel.RecvPacket -> ibc_hooks.OnRecvPacket -> ibc_rate_limit.OnRecvPacket -> gmp.OnRecvPacket -> pfm.OnRecvPacket -> transfer.OnRecvPacket
+// channel.RecvPacket -> usdcmigration.OnRecvPacket -> ibc_hooks.OnRecvPacket -> ibc_rate_limit.OnRecvPacket -> gmp.OnRecvPacket -> pfm.OnRecvPacket -> transfer.OnRecvPacket
 //
 // Note that the forward middleware is only integrated on the "receive" direction. It can be safely skipped when sending.
 // Note also that the forward middleware is called "router", but we are using the name "pfm" (packet forward middleware) for clarity
@@ -1665,12 +1682,25 @@ func (app *App) WireICS20PreWasmKeeper(
 	)
 	app.RateLimitingICS4Wrapper = &rateLimitingICS4Wrapper
 
+	// USDC migration keeper wraps the ICS4 wrapper the transfer keeper used before
+	// (rate limiting). It must be created before the transfer keeper so that every
+	// copy of the transfer keeper (PFM, wasm portSource, wasm IBC handler) shares
+	// this pointer and goes through its send block. MsgReturnToNoble also sends
+	// through the rate-limit wrapper. Never call TransferKeeper.WithICS4Wrapper
+	// after this; use UsdcMigrationKeeper.WithICS4Wrapper instead.
+	app.UsdcMigrationKeeper = usdcmigrationkeeper.NewKeeper(
+		appCodec,
+		runtime.NewKVStoreService(app.keys[usdcmigrationtypes.StoreKey]),
+		app.RateLimitingICS4Wrapper,
+		authtypes.NewModuleAddress(govtypes.ModuleName).String(),
+	)
+
 	// Create Transfer Keepers
 	app.TransferKeeper = wrapkeeper.NewKeeper(
 		appCodec,
 		runtime.NewKVStoreService(app.keys[ibctransfertypes.StoreKey]),
 		app.GetSubspace(ibctransfertypes.ModuleName),
-		app.RateLimitingICS4Wrapper,
+		app.UsdcMigrationKeeper,
 		app.IBCKeeper.ChannelKeeper,
 		app.MsgServiceRouter(),
 		app.AccountKeeper,
@@ -1702,5 +1732,9 @@ func (app *App) WireICS20PreWasmKeeper(
 
 	// Hooks Middleware
 	hooksTransferModule := ibchooks.NewIBCMiddleware(&rateLimitingTransferModule, &app.HooksICS4Wrapper)
-	app.TransferStack = &hooksTransferModule
+	app.HooksTransferStack = &hooksTransferModule
+
+	// USDC migration middleware, outermost on the ICS20 stack: it rejects Noble
+	// USDC on receive and handles acks/timeouts of MsgReturnToNoble packets.
+	app.TransferStack = usdcmigration.NewIBCMiddleware(app.UsdcMigrationKeeper, &hooksTransferModule)
 }

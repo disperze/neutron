@@ -47,11 +47,11 @@ func (suite *HooksTestSuite) TestOnRecvPacketHooks() {
 		expPass  bool
 	}{
 		{"override", func(status *testutils.Status) {
-			suite.GetNeutronZoneApp(suite.ChainB).TransferStack.
+			suite.GetNeutronZoneApp(suite.ChainB).HooksTransferStack.
 				ICS4Middleware.Hooks = testutils.TestRecvOverrideHooks{Status: status}
 		}, true},
 		{"before and after", func(status *testutils.Status) {
-			suite.GetNeutronZoneApp(suite.ChainB).TransferStack.
+			suite.GetNeutronZoneApp(suite.ChainB).HooksTransferStack.
 				ICS4Middleware.Hooks = testutils.TestRecvBeforeAfterHooks{Status: status}
 		}, true},
 	}
@@ -95,14 +95,14 @@ func (suite *HooksTestSuite) TestOnRecvPacketHooks() {
 				suite.Require().False(ack.Success())
 			}
 
-			if _, ok := suite.GetNeutronZoneApp(suite.ChainB).TransferStack.
+			if _, ok := suite.GetNeutronZoneApp(suite.ChainB).HooksTransferStack.
 				ICS4Middleware.Hooks.(testutils.TestRecvOverrideHooks); ok {
 				suite.Require().True(status.OverrideRan)
 				suite.Require().False(status.BeforeRan)
 				suite.Require().False(status.AfterRan)
 			}
 
-			if _, ok := suite.GetNeutronZoneApp(suite.ChainB).TransferStack.
+			if _, ok := suite.GetNeutronZoneApp(suite.ChainB).HooksTransferStack.
 				ICS4Middleware.Hooks.(testutils.TestRecvBeforeAfterHooks); ok {
 				suite.Require().False(status.OverrideRan)
 				suite.Require().True(status.BeforeRan)

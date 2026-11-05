@@ -33,6 +33,8 @@ import (
 
 	paramtypes "github.com/cosmos/cosmos-sdk/x/params/types"
 	transferkeeper "github.com/cosmos/ibc-go/v10/modules/apps/transfer/keeper"
+
+	usdcmigrationkeeper "github.com/disperze/usdc-migration/v10/x/usdcmigration/keeper"
 )
 
 // Upgrade defines a struct containing necessary fields that a SoftwareUpgradeProposal
@@ -52,28 +54,29 @@ type Upgrade struct {
 
 type UpgradeKeepers struct {
 	// keepers
-	AccountKeeper      authkeeper.AccountKeeper
-	BankKeeper         bankkeeper.Keeper
-	TransferKeeper     transferkeeper.Keeper
-	IcqKeeper          icqkeeper.Keeper
-	CronKeeper         cronkeeper.Keeper
-	TokenFactoryKeeper *tokenfactorykeeper.Keeper
-	SlashingKeeper     slashingkeeper.Keeper
-	ParamsKeeper       paramskeeper.Keeper //nolint:staticcheck
-	ContractManager    contractmanagerkeeper.Keeper
-	GovKeeper          govkeeper.Keeper
-	MintKeeper         mintkeeper.Keeper
-	DistributionKeeper distributionkeeper.Keeper
-	ConsensusKeeper    *consensuskeeper.Keeper
-	MarketmapKeeper    *marketmapkeeper.Keeper
-	FeeMarketKeeper    *feemarketkeeper.Keeper
-	DynamicfeesKeeper  *dynamicfeeskeeper.Keeper
-	StakingKeeper      *stakingkeeper.Keeper
-	DexKeeper          *dexkeeper.Keeper
-	IbcRateLimitKeeper *ibcratelimitkeeper.Keeper
-	ChannelKeeper      *channelkeeper.Keeper
-	WasmKeeper         *wasmkeeper.Keeper
-	FeerefunderKeeper  *feerefunderkeeper.Keeper
+	AccountKeeper       authkeeper.AccountKeeper
+	BankKeeper          bankkeeper.Keeper
+	TransferKeeper      transferkeeper.Keeper
+	IcqKeeper           icqkeeper.Keeper
+	CronKeeper          cronkeeper.Keeper
+	TokenFactoryKeeper  *tokenfactorykeeper.Keeper
+	SlashingKeeper      slashingkeeper.Keeper
+	ParamsKeeper        paramskeeper.Keeper //nolint:staticcheck
+	ContractManager     contractmanagerkeeper.Keeper
+	GovKeeper           govkeeper.Keeper
+	MintKeeper          mintkeeper.Keeper
+	DistributionKeeper  distributionkeeper.Keeper
+	ConsensusKeeper     *consensuskeeper.Keeper
+	MarketmapKeeper     *marketmapkeeper.Keeper
+	FeeMarketKeeper     *feemarketkeeper.Keeper
+	DynamicfeesKeeper   *dynamicfeeskeeper.Keeper
+	StakingKeeper       *stakingkeeper.Keeper
+	DexKeeper           *dexkeeper.Keeper
+	IbcRateLimitKeeper  *ibcratelimitkeeper.Keeper
+	ChannelKeeper       *channelkeeper.Keeper
+	WasmKeeper          *wasmkeeper.Keeper
+	FeerefunderKeeper   *feerefunderkeeper.Keeper
+	UsdcMigrationKeeper *usdcmigrationkeeper.Keeper
 	// subspaces
 	GlobalFeeSubspace paramtypes.Subspace
 }
