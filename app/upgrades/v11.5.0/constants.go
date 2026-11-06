@@ -13,9 +13,23 @@ const (
 	UpgradeName = "v11.5.0"
 
 	// NobleChannel is Neutron's end of the ICS20 transfer channel to Noble
-	// (counterparty: Noble channel-18). Its uusdc voucher is
-	// ibc/B559A80D62249C8AA07A380E2A2BEA6E5CA9A6F079C912C3A9E9B494105E4F81.
+	// (counterparty: Noble channel-18).
 	NobleChannel = "channel-30"
+
+	// NobleMultisig receives Noble's USDC escrow for Neutron.
+	//
+	// TODO: set the Noble multisig before tagging the release. While it is
+	// empty the return fails validation and is skipped (see ReturnNobleEscrow),
+	// so the upgrade only installs the IBC blocks.
+	NobleMultisig = ""
+
+	// ReturnTimeoutSeconds is the timeout of the return packet: the maximum the
+	// module allows (7 days). A timed-out return can only be resent by another
+	// upgrade, since Neutron governance cannot execute MsgReturnToNoble.
+	ReturnTimeoutSeconds = usdcmigrationtypes.MaxTimeoutSeconds
+
+	// rateLimitAnyChannel is the rate-limit contract's wildcard channel.
+	rateLimitAnyChannel = "any"
 )
 
 var Upgrade = upgrades.Upgrade{
